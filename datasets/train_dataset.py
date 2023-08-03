@@ -17,7 +17,7 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 class TrainDataset(torch.utils.data.Dataset):
     def __init__(self, args, dataset_folder, M=10, alpha=30, N=5, L=2,
-                 current_group=0, min_images_per_class=10):
+                 current_group=0, min_images_per_class=10, sampling_num = 0):
         """
         Parameters (please check our paper for a clearer explanation of the parameters).
         ----------
@@ -38,6 +38,7 @@ class TrainDataset(torch.utils.data.Dataset):
         self.current_group = current_group
         self.dataset_folder = dataset_folder
         self.augmentation_device = args.augmentation_device
+        self.sampling_num = sampling_num
         
         # dataset_name should be either "processed", "small" or "raw", if you're using SF-XL
         dataset_name = os.path.basename(dataset_folder)
@@ -71,10 +72,10 @@ class TrainDataset(torch.utils.data.Dataset):
     def open_image(path):
         return Image.open(path).convert("RGB")
     
-    def __getitem__(self, class_num):
+    def __getitem__(self, sampling_ind):
         # This function takes as input the class_num instead of the index of
         # the image. This way each class is equally represented during training.
-        
+        class_num = sampling_ind %len(self.classes_ids)
         class_id = self.classes_ids[class_num]
         # Pick a random image among those in this class.
         image_path = os.path.join(self.dataset_folder, random.choice(self.images_per_class[class_id]))
@@ -99,8 +100,9 @@ class TrainDataset(torch.utils.data.Dataset):
         return sum([len(self.images_per_class[c]) for c in self.classes_ids])
     
     def __len__(self):
-        """Return the number of classes within this group."""
-        return len(self.classes_ids)
+        """Return the number of samples within this group."""
+        assert self.sampling_num > 0
+        return self.sampling_num
     
     @staticmethod
     def initialize(dataset_folder, M, N, alpha, L, min_images_per_class, filename):

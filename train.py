@@ -47,7 +47,7 @@ model_optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
 #### Datasets
 groups = [TrainDataset(args, args.train_set_folder, M=args.M, alpha=args.alpha, N=args.N, L=args.L,
-                       current_group=n, min_images_per_class=args.min_images_per_class) for n in range(args.groups_num)]
+                       current_group=n, min_images_per_class=args.min_images_per_class, sampling_num= args.batch_size*args.iterations_per_epoch) for n in range(args.groups_num)]
 # Each group has its own classifier, which depends on the number of classes in the group
 classifiers = [cosface_loss.MarginCosineProduct(args.fc_output_dim, len(group)) for group in groups]
 classifiers_optimizers = [torch.optim.Adam(classifier.parameters(), lr=args.classifiers_lr) for classifier in classifiers]
@@ -74,10 +74,10 @@ else:
 
 #### Train / evaluation loop
 logging.info("Start training ...")
-logging.info(f"There are {len(groups[0])} classes for the first group, " +
+logging.info(f"There are {len(groups[0].classes_ids)} classes for the first group, " +
              f"each epoch has {args.iterations_per_epoch} iterations " +
              f"with batch_size {args.batch_size}, therefore the model sees each class (on average) " +
-             f"{args.iterations_per_epoch * args.batch_size / len(groups[0]):.1f} times per epoch")
+             f"{args.iterations_per_epoch * args.batch_size / len(groups[0].classes_ids):.1f} times per epoch")
 
 
 if args.augmentation_device == "cuda":
@@ -103,16 +103,14 @@ for epoch_num in range(start_epoch_num, args.epochs_num):
     classifiers[current_group_num] = classifiers[current_group_num].to(args.device)
     util.move_to_device(classifiers_optimizers[current_group_num], args.device)
     
-    dataloader = commons.InfiniteDataLoader(groups[current_group_num], num_workers=args.num_workers,
+    dataloader = torch.utils.data.DataLoader(groups[current_group_num], num_workers=args.num_workers,
                                             batch_size=args.batch_size, shuffle=True,
                                             pin_memory=(args.device == "cuda"), drop_last=True)
     
-    dataloader_iterator = iter(dataloader)
     model = model.train()
     
     epoch_losses = np.zeros((0, 1), dtype=np.float32)
-    for iteration in tqdm(range(args.iterations_per_epoch), ncols=100):
-        images, targets, _ = next(dataloader_iterator)
+    for images, targets, _ in tqdm(dataloader, ncols=100):
         images, targets = images.to(args.device), targets.to(args.device)
         
         if args.augmentation_device == "cuda":
